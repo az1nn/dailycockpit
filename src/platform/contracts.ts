@@ -2,6 +2,12 @@ import type { ProjectContext, RepositoryRef } from '../domain/project';
 
 export type MutationKind = 'workspace.patch' | 'git.commit' | 'git.push' | 'github.merge';
 
+export interface WorkspaceMetadata {
+  root: string;
+  name: string;
+  isGitRepository: boolean;
+}
+
 export interface FileEntry {
   path: string;
   kind: 'file' | 'directory';
@@ -11,6 +17,8 @@ export interface GitStatus {
   branch: string;
   clean: boolean;
   changedPaths: string[];
+  remoteUrl?: string;
+  repositoryRoot: string;
 }
 
 export interface PullRequestSummary {
@@ -22,16 +30,17 @@ export interface PullRequestSummary {
 }
 
 export interface WorkspaceService {
-  listFiles(root?: string): Promise<FileEntry[]>;
-  readText(path: string): Promise<string>;
-  applyPatch(patch: string, approvalToken: string): Promise<void>;
+  open(path: string): Promise<WorkspaceMetadata>;
+  listFiles(root: string, relative?: string): Promise<FileEntry[]>;
+  readText(root: string, path: string): Promise<string>;
+  applyPatch(root: string, patch: string, approvalToken: string): Promise<void>;
 }
 
 export interface GitService {
-  status(): Promise<GitStatus>;
-  diff(): Promise<string>;
-  commit(message: string, approvalToken: string): Promise<string>;
-  push(approvalToken: string): Promise<void>;
+  status(root: string): Promise<GitStatus>;
+  diff(root: string): Promise<string>;
+  commit(root: string, message: string, approvalToken: string): Promise<string>;
+  push(root: string, approvalToken: string): Promise<void>;
 }
 
 export interface GitHubService {
