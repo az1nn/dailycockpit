@@ -13,6 +13,21 @@ pub struct WorkspaceMetadata {
     root: String,
     name: String,
     is_git_repository: bool,
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_uri: Option<String>,
+    access_state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    can_write: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AndroidWorkspaceRestorePayload {
+    metadata: Option<WorkspaceMetadata>,
+    access_state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_uri: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,7 +77,13 @@ fn canonical_scoped_path(root: &Path, relative: &Path) -> Result<(PathBuf, PathB
     Ok((canonical_root, canonical_target))
 }
 
-fn workspace_metadata(path: &Path) -> Result<WorkspaceMetadata, String> {
+fn workspace_metadata_with_source(
+    path: &Path,
+    kind: impl Into<String>,
+    source_uri: Option<String>,
+    access_state: impl Into<String>,
+    can_write: Option<bool>,
+) -> Result<WorkspaceMetadata, String> {
     let canonical = canonical_directory(path)?;
     let name = canonical
         .file_name()
@@ -74,7 +95,15 @@ fn workspace_metadata(path: &Path) -> Result<WorkspaceMetadata, String> {
         root: canonical.to_string_lossy().into_owned(),
         name,
         is_git_repository: Repository::open(&canonical).is_ok(),
+        kind: kind.into(),
+        source_uri,
+        access_state: access_state.into(),
+        can_write,
     })
+}
+
+fn workspace_metadata(path: &Path) -> Result<WorkspaceMetadata, String> {
+    workspace_metadata_with_source(path, "filesystem", None, "available", None)
 }
 
 fn workspace_entries(root: &Path, relative: Option<&Path>) -> Result<Vec<FileEntry>, String> {
@@ -214,8 +243,87 @@ fn render_git_diff(root: &Path) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn workspace_runtime() -> &'static str {
+    if cfg!(target_os = "android") {
+        "android"
+    } else {
+        "desktop"
+    }
+}
+
+#[tauri::command]
 pub fn open_workspace(path: String) -> Result<WorkspaceMetadata, String> {
     workspace_metadata(Path::new(&path))
+}
+
+#[tauri::command]
+pub fn open_android_workspace(app: tauri::AppHandle) -> Result<WorkspaceMetadata, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_workspace::AndroidWorkspaceExt;
+
+        let materialized = app.android_workspace().pick_and_materialize()?;
+        return workspace_metadata_with_source(
+            Path::new(&materialized.root),
+            "android-materialized",
+            Some(materialized.source_uri),
+            materialized.access_state,
+            Some(materialized.can_write),
+        );
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Err("Android workspace selection is only available on Android.".into())
+    }
+}
+
+#[tauri::command]
+pub fn restore_android_workspace(
+    app: tauri::AppHandle,
+) -> Result<AndroidWorkspaceRestorePayload, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_workspace::AndroidWorkspaceExt;
+
+        let restored = app.android_workspace().restore_and_materialize()?;
+        if !restored.available {
+            return Ok(AndroidWorkspaceRestorePayload {
+                metadata: None,
+                access_state: restored.access_state,
+                source_uri: restored.source_uri,
+            });
+        }
+
+        let root = restored
+            .root
+            .ok_or_else(|| "Android workspace restore returned no working root.".to_string())?;
+        let source_uri = restored.source_uri.clone();
+        let metadata = workspace_metadata_with_source(
+            Path::new(&root),
+            "android-materialized",
+            source_uri.clone(),
+            restored.access_state.clone(),
+            Some(restored.can_write),
+        )?;
+
+        return Ok(AndroidWorkspaceRestorePayload {
+            metadata: Some(metadata),
+            access_state: restored.access_state,
+            source_uri,
+        });
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(AndroidWorkspaceRestorePayload {
+            metadata: None,
+            access_state: "unsupported".into(),
+            source_uri: None,
+        })
+    }
 }
 
 #[tauri::command]
@@ -270,6 +378,16 @@ mod tests {
 
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, "README.md");
+    }
+
+    #[test]
+    fn filesystem_metadata_is_explicitly_typed() {
+        let root = tempdir().expect("workspace");
+        let metadata = workspace_metadata(root.path()).expect("metadata");
+
+        assert_eq!(metadata.kind, "filesystem");
+        assert_eq!(metadata.access_state, "available");
+        assert!(metadata.source_uri.is_none());
     }
 
     #[test]
