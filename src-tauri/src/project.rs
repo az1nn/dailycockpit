@@ -79,17 +79,22 @@ fn canonical_scoped_path(root: &Path, relative: &Path) -> Result<(PathBuf, PathB
 
 fn workspace_metadata_with_source(
     path: &Path,
+    display_name: Option<String>,
     kind: impl Into<String>,
     source_uri: Option<String>,
     access_state: impl Into<String>,
     can_write: Option<bool>,
 ) -> Result<WorkspaceMetadata, String> {
     let canonical = canonical_directory(path)?;
-    let name = canonical
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("workspace")
-        .to_string();
+    let name = display_name
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| {
+            canonical
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("workspace")
+                .to_string()
+        });
 
     Ok(WorkspaceMetadata {
         root: canonical.to_string_lossy().into_owned(),
@@ -103,7 +108,7 @@ fn workspace_metadata_with_source(
 }
 
 fn workspace_metadata(path: &Path) -> Result<WorkspaceMetadata, String> {
-    workspace_metadata_with_source(path, "filesystem", None, "available", None)
+    workspace_metadata_with_source(path, None, "filesystem", None, "available", None)
 }
 
 fn workspace_entries(root: &Path, relative: Option<&Path>) -> Result<Vec<FileEntry>, String> {
@@ -265,6 +270,7 @@ pub fn open_android_workspace(app: tauri::AppHandle) -> Result<WorkspaceMetadata
         let materialized = app.android_workspace().pick_and_materialize()?;
         return workspace_metadata_with_source(
             Path::new(&materialized.root),
+            Some(materialized.name),
             "android-materialized",
             Some(materialized.source_uri),
             materialized.access_state,
@@ -302,6 +308,7 @@ pub fn restore_android_workspace(
         let source_uri = restored.source_uri.clone();
         let metadata = workspace_metadata_with_source(
             Path::new(&root),
+            restored.name,
             "android-materialized",
             source_uri.clone(),
             restored.access_state.clone(),
@@ -388,6 +395,23 @@ mod tests {
         assert_eq!(metadata.kind, "filesystem");
         assert_eq!(metadata.access_state, "available");
         assert!(metadata.source_uri.is_none());
+    }
+
+    #[test]
+    fn source_display_name_does_not_leak_materialized_directory_identity() {
+        let root = tempdir().expect("workspace");
+        let metadata = workspace_metadata_with_source(
+            root.path(),
+            Some("Human Project".into()),
+            "android-materialized",
+            Some("content://example/tree/project".into()),
+            "available",
+            Some(true),
+        )
+        .expect("metadata");
+
+        assert_eq!(metadata.name, "Human Project");
+        assert_ne!(metadata.name, root.path().file_name().unwrap().to_string_lossy());
     }
 
     #[test]
