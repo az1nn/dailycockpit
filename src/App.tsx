@@ -1,9 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { demoAgentRuntime } from './agent/demoRuntime';
 import type { ProjectContext, RepositoryRef } from './domain/project';
-import type { AgentEvent, FileEntry, GitStatus, WorkspaceMetadata } from './platform/contracts';
+import type {
+  AgentEvent,
+  FileEntry,
+  GitStatus,
+  WorkspaceMetadata,
+  WorkspaceRuntime,
+} from './platform/contracts';
 import { nativeGitService, nativeWorkspaceService } from './platform/tauriAdapters';
 
 type View = 'project' | 'changes' | 'github' | 'agent';
@@ -70,10 +76,17 @@ function buildProject(metadata: WorkspaceMetadata, status: GitStatus | null): Pr
     id: metadata.root,
     name: metadata.name,
     workspaceRoot: metadata.root,
+    workspaceKind: metadata.kind,
+    workspaceSourceUri: metadata.sourceUri,
+    workspaceAccessState: metadata.accessState,
     branch: status?.branch ?? 'not a Git repository',
     workspaceState: status ? (status.clean ? 'clean' : 'dirty') : 'unknown',
     repository: repositoryFromRemote(status?.remoteUrl),
     openPullRequests: 0,
+    activeSpec:
+      metadata.kind === 'android-materialized'
+        ? '003-android-workspace-storage'
+        : '002-native-project-context',
   };
 }
 
@@ -82,6 +95,16 @@ function viewTitle(view: View) {
   if (view === 'changes') return 'Review changes';
   if (view === 'github') return 'GitHub workspace';
   return 'Agent workspace';
+}
+
+function restoreError(accessState: string) {
+  if (accessState === 'permission-lost') {
+    return 'Android workspace permission is no longer available. Reconnect the project source.';
+  }
+  if (accessState === 'source-missing') {
+    return 'The Android workspace source is no longer available. Reconnect or import the project again.';
+  }
+  return `Android workspace is unavailable (${accessState}).`;
 }
 
 export function App() {
@@ -94,6 +117,7 @@ export function App() {
   const [fileText, setFileText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  const [workspaceRuntime, setWorkspaceRuntime] = useState<WorkspaceRuntime | null>(null);
   const [input, setInput] = useState('');
   const [events, setEvents] = useState<AgentEvent[]>(initialEvents);
   const [running, setRunning] = useState(false);
@@ -101,11 +125,11 @@ export function App() {
   const projectLabel = useMemo(() => {
     if (!project) return 'No project selected';
     if (project.repository) return `${project.repository.owner}/${project.repository.name}`;
+    if (project.workspaceKind === 'android-materialized') return `${project.name} · Android working copy`;
     return project.workspaceRoot;
   }, [project]);
 
-  async function loadProject(path: string) {
-    const metadata = await nativeWorkspaceService.open(path);
+  async function loadWorkspaceMetadata(metadata: WorkspaceMetadata, message?: string) {
     const entries = await nativeWorkspaceService.listFiles(metadata.root);
     let status: GitStatus | null = null;
     let nextDiff = '';
@@ -127,15 +151,70 @@ export function App() {
     setEvents([
       {
         type: 'message',
-        text: `Native project context loaded for ${nextProject.name}. Workspace and Git reads now come from Tauri.`,
+        text:
+          message ??
+          `Native project context loaded for ${nextProject.name}. Workspace and Git reads now come from Tauri.`,
       },
     ]);
   }
+
+  async function loadProject(path: string) {
+    const metadata = await nativeWorkspaceService.open(path);
+    await loadWorkspaceMetadata(metadata);
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      try {
+        const runtime = await nativeWorkspaceService.runtime();
+        if (!active) return;
+        setWorkspaceRuntime(runtime);
+
+        if (runtime !== 'android') return;
+
+        const restored = await nativeWorkspaceService.restoreAndroid();
+        if (!active) return;
+
+        if (restored.metadata) {
+          await loadWorkspaceMetadata(
+            restored.metadata,
+            `Android project ${restored.metadata.name} restored from persisted workspace access.`,
+          );
+          return;
+        }
+
+        if (restored.accessState !== 'not-configured') {
+          setError(restoreError(restored.accessState));
+        }
+      } catch (reason) {
+        if (active) setError(errorText(reason));
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function openProject() {
     setOpening(true);
     setError(null);
     try {
+      const runtime = workspaceRuntime ?? (await nativeWorkspaceService.runtime());
+      setWorkspaceRuntime(runtime);
+
+      if (runtime === 'android') {
+        const metadata = await nativeWorkspaceService.openAndroid();
+        await loadWorkspaceMetadata(
+          metadata,
+          `Android project ${metadata.name} imported into the app-owned working copy.`,
+        );
+        setView('project');
+        return;
+      }
+
       const selected = await open({
         directory: true,
         multiple: false,
@@ -156,6 +235,23 @@ export function App() {
     setOpening(true);
     setError(null);
     try {
+      if (project.workspaceKind === 'android-materialized') {
+        const restored = await nativeWorkspaceService.restoreAndroid();
+        if (!restored.metadata) {
+          setProject(null);
+          setFiles([]);
+          setGitStatus(null);
+          setDiff('');
+          setError(restoreError(restored.accessState));
+          return;
+        }
+        await loadWorkspaceMetadata(
+          restored.metadata,
+          `Android working copy refreshed from ${restored.metadata.name}.`,
+        );
+        return;
+      }
+
       await loadProject(project.workspaceRoot);
     } catch (reason) {
       setError(errorText(reason));
@@ -201,6 +297,9 @@ export function App() {
       ? 'clean'
       : `${gitStatus.changedPaths.length} changed`
     : 'Git unavailable';
+  const defaultSpec = workspaceRuntime === 'android'
+    ? '003-android-workspace-storage'
+    : '002-native-project-context';
 
   return (
     <div className="app-shell">
@@ -234,7 +333,7 @@ export function App() {
         </div>
         <div className="spec-chip">
           <span>Active spec</span>
-          <strong>{project?.activeSpec ?? '002-native-project-context'}</strong>
+          <strong>{project?.activeSpec ?? defaultSpec}</strong>
         </div>
       </aside>
 
@@ -251,130 +350,132 @@ export function App() {
               </button>
             )}
             <button type="button" className="primary" onClick={openProject} disabled={opening}>
-              {opening ? 'Opening…' : project ? 'Open another' : 'Open project'}
+              {opening
+                ? 'Opening…'
+                : project
+                  ? workspaceRuntime === 'android'
+                    ? 'Reconnect project'
+                    : 'Open another'
+                  : workspaceRuntime === 'android'
+                    ? 'Import project'
+                    : 'Open project'}
             </button>
           </div>
         </section>
 
         {error && <div className="error-banner">{error}</div>}
 
-        <section className="context-grid">
-          <article className="panel file-panel">
-            <div className="panel-title"><span>Project files</span><span>{files.length}</span></div>
-            <div className="file-list">
-              {files.length === 0 && <span className="file-list__empty">Open a project to inspect its root.</span>}
-              {files.map((entry) => (
-                <button type="button" key={entry.path} onClick={() => inspectFile(entry)} disabled={entry.kind === 'directory'}>
-                  <span>{entry.kind === 'directory' ? '▸ ' : '· '}</span>{entry.path}
-                </button>
+        {!project && (
+          <section className="empty-state">
+            <span className="empty-glyph">◇</span>
+            <h2>{workspaceRuntime === 'android' ? 'Import an Android project' : 'Open a project'}</h2>
+            <p>
+              {workspaceRuntime === 'android'
+                ? 'Choose a project through Android storage access. Daily Cockpit keeps the source grant separate from its app-owned working copy.'
+                : 'Choose a local workspace to load real filesystem and Git state through the native boundary.'}
+            </p>
+            <button type="button" className="primary" onClick={openProject} disabled={opening}>
+              {opening ? 'Opening…' : workspaceRuntime === 'android' ? 'Choose project source' : 'Choose directory'}
+            </button>
+          </section>
+        )}
+
+        {project && view === 'project' && (
+          <div className="project-grid">
+            <section className="panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="eyebrow">Workspace</span>
+                  <h2>Project files</h2>
+                </div>
+                <span className="badge">{files.length} entries</span>
+              </div>
+              {project.workspaceKind === 'android-materialized' && (
+                <div className="workspace-note">
+                  Android source access: <strong>{project.workspaceAccessState}</strong>. Git and file reads use the app-owned materialized working copy.
+                </div>
+              )}
+              <div className="file-list">
+                {files.map((entry) => (
+                  <button
+                    type="button"
+                    key={entry.path}
+                    className={selectedFile === entry.path ? 'file-row file-row--selected' : 'file-row'}
+                    onClick={() => inspectFile(entry)}
+                    disabled={entry.kind !== 'file'}
+                  >
+                    <span>{entry.kind === 'directory' ? '▸' : '·'}</span>
+                    <span>{entry.path}</span>
+                    <small>{entry.kind}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel preview-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="eyebrow">Preview</span>
+                  <h2>{selectedFile ?? 'Select a text file'}</h2>
+                </div>
+              </div>
+              <pre className="file-preview">{fileText || 'UTF-8 text previews are read through the scoped native workspace boundary.'}</pre>
+            </section>
+          </div>
+        )}
+
+        {project && view === 'changes' && (
+          <section className="panel changes-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">GitService</span>
+                <h2>Working tree</h2>
+              </div>
+              <span className="badge">{diffLabel}</span>
+            </div>
+            {gitStatus ? (
+              <>
+                <div className="change-summary">
+                  <span>branch: {gitStatus.branch}</span>
+                  <span>{gitStatus.changedPaths.length} changed paths</span>
+                </div>
+                <pre className="diff-preview">{diff || 'Working tree is clean.'}</pre>
+              </>
+            ) : (
+              <div className="empty-inline">This workspace is not a Git repository.</div>
+            )}
+          </section>
+        )}
+
+        {project && view === 'github' && (
+          <section className="panel placeholder-panel">
+            <span className="eyebrow">Next capability</span>
+            <h2>GitHub auth and pull-request reads are intentionally not implemented yet.</h2>
+            <p>The project and native Git boundaries land first. Remote authority comes in a later approval-scoped wave.</p>
+          </section>
+        )}
+
+        {project && view === 'agent' && (
+          <section className="agent-layout">
+            <div className="agent-feed">
+              {events.map((event, index) => (
+                <EventCard key={`${event.type}-${index}`} event={event} />
               ))}
             </div>
-          </article>
-
-          <article className="panel editor-panel">
-            <div className="panel-title"><span>{project?.name ?? 'Native context'}</span><span>{diffLabel}</span></div>
-
-            {!project && (
-              <div className="editor-copy empty-state">
-                <span className="eyebrow">Wave 2</span>
-                <h2>Attach the cockpit to a real project.</h2>
-                <p>Choose a desktop workspace. Daily Cockpit will read its canonical path and Git state through the Tauri native boundary.</p>
-                <button type="button" className="primary" onClick={openProject} disabled={opening}>Open project</button>
-              </div>
-            )}
-
-            {project && view === 'project' && selectedFile && (
-              <div className="native-content">
-                <div className="content-toolbar">
-                  <span>{selectedFile}</span>
-                  <button type="button" className="command-button" onClick={() => setSelectedFile(null)}>Context</button>
-                </div>
-                <pre className="file-preview">{fileText}</pre>
-              </div>
-            )}
-
-            {project && view === 'project' && !selectedFile && (
-              <div className="editor-copy">
-                <span className="eyebrow">Native project</span>
-                <h2>{project.name}</h2>
-                <p className="path-copy">{project.workspaceRoot}</p>
-                <div className="metric-grid">
-                  <div><span>Branch</span><strong>{project.branch}</strong></div>
-                  <div><span>Workspace</span><strong>{project.workspaceState}</strong></div>
-                  <div><span>Changes</span><strong>{gitStatus?.changedPaths.length ?? '—'}</strong></div>
-                </div>
-                <div className="guardrail">
-                  <strong>Read-only native slice</strong>
-                  <p>Filesystem listing/read and Git status/diff are live. Patch, commit, push and merge remain unavailable behind the mutation boundary.</p>
-                </div>
-              </div>
-            )}
-
-            {project && view === 'changes' && (
-              <div className="native-content">
-                <div className="content-toolbar">
-                  <span>{gitStatus ? `${gitStatus.changedPaths.length} changed paths` : 'Not a Git repository'}</span>
-                  <span>read-only</span>
-                </div>
-                {gitStatus && gitStatus.changedPaths.length > 0 && (
-                  <div className="changed-paths">
-                    {gitStatus.changedPaths.map((path) => <span key={path}>{path}</span>)}
-                  </div>
-                )}
-                <pre className="diff-view">{gitStatus ? diff || 'Working tree is clean.' : 'Git is unavailable for this workspace.'}</pre>
-              </div>
-            )}
-
-            {project && view === 'github' && (
-              <div className="editor-copy empty-state">
-                <span className="eyebrow">Next wave</span>
-                <h2>GitHub remains outside this slice.</h2>
-                <p>The local project identity is real now. Authentication, PR reads and checks arrive after SecretStore + OpenAI BYOK.</p>
-              </div>
-            )}
-
-            {project && view === 'agent' && (
-              <div className="editor-copy empty-state">
-                <span className="eyebrow">Project-aware session</span>
-                <h2>The agent now receives the real ProjectContext.</h2>
-                <p>The runtime remains demonstrative until BYOK lands, but its project identity, branch and workspace state are no longer fixtures.</p>
-              </div>
-            )}
-          </article>
-        </section>
+            <form className="agent-composer" onSubmit={submit}>
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="Ask the demo agent about this project…"
+                rows={3}
+              />
+              <button type="submit" className="primary" disabled={running || !input.trim()}>
+                {running ? 'Running…' : 'Run'}
+              </button>
+            </form>
+          </section>
+        )}
       </main>
-
-      <aside className="agent-panel">
-        <div className="agent-panel__header">
-          <div><span className="eyebrow">Agent</span><strong>Project-aware session</strong></div>
-          <span className="live-indicator">{project ? 'native context' : 'idle'}</span>
-        </div>
-        <div className="agent-stream">
-          {events.map((event, index) => <EventCard event={event} key={`${event.type}-${index}`} />)}
-          {running && <div className="thinking">Planning tools…</div>}
-        </div>
-        <form className="prompt-box" onSubmit={submit}>
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder={project ? 'Ask about this project…' : 'Open a project first…'}
-            rows={3}
-            disabled={!project}
-          />
-          <div className="prompt-actions">
-            <span>{project ? 'Context: native project + spec' : 'No project context'}</span>
-            <button type="submit" className="primary" disabled={running || !project || !input.trim()}>Run</button>
-          </div>
-        </form>
-      </aside>
-
-      <nav className="mobile-nav">
-        {navigation.map((item) => (
-          <button type="button" key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}>
-            <span>{item.glyph}</span>{item.label}
-          </button>
-        ))}
-      </nav>
     </div>
   );
 }
