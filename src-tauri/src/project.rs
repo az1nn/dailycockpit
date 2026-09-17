@@ -164,12 +164,12 @@ fn inspect_git_status(root: &Path) -> Result<GitStatusPayload, String> {
 
     let changed_paths: BTreeSet<String> = statuses
         .iter()
-        .filter_map(|entry| entry.path().map(str::to_string))
+        .map(|entry| String::from_utf8_lossy(entry.path_bytes()).into_owned())
         .collect();
     let remote_url = repo
         .find_remote("origin")
         .ok()
-        .and_then(|remote| remote.url().map(str::to_string));
+        .and_then(|remote| remote.url().ok().map(str::to_string));
     let repository_root = repo
         .workdir()
         .unwrap_or_else(|| repo.path())
@@ -190,6 +190,7 @@ fn render_git_diff(root: &Path) -> Result<String, String> {
     let head_tree = repo.head().ok().and_then(|head| head.peel_to_tree().ok());
     let mut options = DiffOptions::new();
     options
+        .include_untracked(true)
         .show_untracked_content(true)
         .recurse_untracked_dirs(true)
         .context_lines(3);
@@ -288,14 +289,17 @@ mod tests {
         drop(tree);
 
         fs::write(root.path().join("tracked.txt"), "after\n").expect("modified file");
+        fs::write(root.path().join("untracked.txt"), "new\n").expect("untracked file");
 
         let status = inspect_git_status(root.path()).expect("status");
         let diff = render_git_diff(root.path()).expect("diff");
 
         assert!(!status.clean);
-        assert_eq!(status.changed_paths, vec!["tracked.txt"]);
+        assert_eq!(status.changed_paths, vec!["tracked.txt", "untracked.txt"]);
         assert!(diff.contains("tracked.txt"));
         assert!(diff.contains("-before"));
         assert!(diff.contains("+after"));
+        assert!(diff.contains("untracked.txt"));
+        assert!(diff.contains("+new"));
     }
 }
