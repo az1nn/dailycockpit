@@ -1,7 +1,7 @@
 # Feature Specification: Native Project Context
 
 **Feature Branch**: `feat/native-project-context`  
-**Status**: Ready for implementation  
+**Status**: Implemented — ready for review  
 **Priority**: MVP #1 / Wave 2
 
 ## Why
