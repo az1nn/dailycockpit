@@ -118,18 +118,10 @@ jobs:
             adb install -r "$ANDROID_DEBUG_APK"
             adb shell am force-stop dev.dailycockpit.app
             adb shell monkey -p dev.dailycockpit.app -c android.intent.category.LAUNCHER 1
-            PID=""
-            for attempt in $(seq 1 20); do
-              PID="$(adb shell pidof dev.dailycockpit.app | tr -d '\r')"
-              if [ -n "$PID" ]; then
-                break
-              fi
-              sleep 1
-            done
-            test -n "$PID"
-            adb shell dumpsys activity activities | grep -q 'mResumedActivity.*dev.dailycockpit.app'
+            for attempt in $(seq 1 20); do PID="$(adb shell pidof dev.dailycockpit.app | tr -d '\r')"; [ -n "$PID" ] && break; sleep 1; done; test -n "$PID"
             adb exec-out screencap -p > android-emulator-smoke.png
             adb logcat -d > android-emulator-logcat.txt
+            adb shell dumpsys activity activities | grep -Eq '(mResumedActivity|topResumedActivity).*dev\.dailycockpit\.app'
       - name: Upload emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
