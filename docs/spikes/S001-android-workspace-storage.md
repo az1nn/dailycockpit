@@ -1,8 +1,9 @@
 # S001 — Android Workspace Storage
 
 - Status: In progress — hybrid model implemented as validation hypothesis
-- Updated: 2026-09-17
+- Updated: 2026-09-22
 - Feature: `specs/003-android-workspace-storage/`
+- Evidence HEAD: `fe73e5dd6394cda1999e0ec12a05cc8bf35be6aa`
 
 ## Question
 
@@ -92,7 +93,7 @@ The external SAF tree remains the source/provenance reference. The app-owned wor
 
 Branch: `feat/android-workspace-storage-s001`
 
-Implemented so far:
+Implemented:
 
 - independent Spec Kit `003-android-workspace-storage`;
 - internal Tauri mobile plugin for Android workspace access;
@@ -109,14 +110,26 @@ Implemented so far:
 - no generic Android intent, `ContentResolver`, shell or filesystem authority exposed to the renderer;
 - Git mutations remain unavailable.
 
+## Current-head verification
+
+At HEAD `fe73e5dd6394cda1999e0ec12a05cc8bf35be6aa`, CI run `35340033399` is green for:
+
+- renderer typecheck/build;
+- Rust host unit/integration tests;
+- Android arm64 debug APK build;
+- current `git2` / `libgit2-sys` Android cross-compilation;
+- x86_64 emulator APK build;
+- emulator boot, install and application launch smoke;
+- uploaded screenshot/logcat evidence artifact `android-emulator-smoke`.
+
+This closes build viability and basic emulator startup only. The emulator job does not exercise a real SAF tree.
+
 ## Evidence still required
 
 S001 is **not complete** yet. Required remaining validation:
 
-- renderer/native CI on the implementation HEAD;
-- Android target build/cross-compilation with the current `git2` configuration;
 - real SAF import on emulator;
-- persisted access after app restart;
+- persisted access after app restart with a selected SAF source;
 - repository detection/status/diff against a materialized repository;
 - device-reboot behavior;
 - permission-revocation/source-missing recovery;
