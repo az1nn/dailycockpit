@@ -2,7 +2,8 @@
 
 **Feature**: `003-android-workspace-storage`  
 **Branch**: `feat/android-workspace-storage-s001`  
-**Status**: In progress — implementation present; Android runtime/device gates remain open
+**HEAD**: `fe73e5dd6394cda1999e0ec12a05cc8bf35be6aa`  
+**Status**: In progress — current-head CI/build/emulator smoke green; Android SAF lifecycle/device gates remain open
 
 ## Scope convergence
 
@@ -53,7 +54,7 @@ PASS at implementation level.
 
 ### Persistable access model
 
-IMPLEMENTED, runtime validation pending.
+IMPLEMENTED, runtime lifecycle validation pending.
 
 - picker requests `ACTION_OPEN_DOCUMENT_TREE`;
 - returned read/write flags are persisted through `takePersistableUriPermission`;
@@ -64,7 +65,7 @@ Required remaining evidence: successful restore after actual Android app restart
 
 ### Real workspace list/read
 
-IMPLEMENTED against the materialized working root; Android runtime validation pending.
+IMPLEMENTED against the materialized working root; real SAF runtime validation pending.
 
 Existing native scoping still provides:
 
@@ -91,34 +92,43 @@ PASS at implementation/test level. The visible Android project name is carried f
 
 ## Validation matrix
 
+Evidence below is bound to HEAD `fe73e5dd6394cda1999e0ec12a05cc8bf35be6aa`, CI run `35340033399`.
+
 | Gate | Current evidence | Status |
 |---|---|---|
-| Renderer typecheck/build | CI has passed on implementation snapshots; current-head result must remain green | In progress |
-| Rust host unit/integration tests | CI has passed with the mobile plugin in the dependency graph; current-head result must remain green | In progress |
-| Android SDK/NDK setup | CI setup issue identified (`tools` package obsolete) and corrected; current run reaches Android build | Passing infrastructure step |
-| Android arm64 APK build | Current CI executes `tauri android build --debug --apk --target aarch64` | Pending final result |
-| Current `git2` Android cross-compilation | Proven only if the Android arm64 build passes | Pending |
-| Android emulator boot/install | Not yet executed | Open |
-| Real SAF tree selection/import | Requires running Android environment | Open |
-| Workspace restore after app restart | Requires running Android environment | Open |
-| Git status/diff on materialized repo | Requires running Android environment with a selected repository | Open |
-| Reboot persistence | Requires emulator/device lifecycle validation | Open |
-| Permission revocation/source missing | Requires Android lifecycle validation | Open |
-| Uninstall/reinstall | Design documented; runtime recovery observation still required | Open |
-| Physical-device validation | No evidence yet | **Mandatory open gate** |
+| Renderer typecheck/build | `renderer` job completed successfully | PASS |
+| Rust host unit/integration tests | `native` job completed successfully | PASS |
+| Android SDK/NDK setup | Android CI jobs completed setup and build | PASS |
+| Android arm64 APK build | `tauri android build --debug --apk --target aarch64` completed successfully | PASS |
+| Current `git2` Android cross-compilation | `libgit2-sys` / `git2 0.21.0` compiled in successful arm64 Android build | PASS |
+| Android emulator boot/install | x86_64 APK built, emulator booted, app installed/launched, screenshot/logcat artifact uploaded | PASS (smoke only) |
+| Real SAF tree selection/import | Not exercised by current emulator smoke | OPEN |
+| Workspace restore after app restart | Not exercised with a real selected SAF source | OPEN |
+| Git status/diff on materialized repo | No runtime evidence against a materialized Android repository yet | OPEN |
+| Reboot persistence | Requires emulator/device lifecycle validation | OPEN |
+| Permission revocation/source missing | Requires Android lifecycle validation | OPEN |
+| Uninstall/reinstall | Design documented; runtime recovery observation still required | OPEN |
+| Physical-device validation | No evidence yet | **MANDATORY OPEN GATE** |
+
+Artifact: `android-emulator-smoke` from run `35340033399`.
 
 ## S001 conclusion
 
 S001 remains **In progress**.
 
-The hybrid SAF-source + app-owned-working-copy model has converged at the implementation level and resolves the URI/filesystem impedance mismatch without weakening the native authority boundary. It must not be promoted to a final Android storage decision until build, emulator, lifecycle and physical-device evidence close the remaining gates.
+The hybrid SAF-source + app-owned-working-copy model has converged at the implementation level. Current-head CI now proves renderer/native health, Android arm64 build viability, current `git2` Android cross-compilation, and an emulator boot/install smoke. These results do **not** prove real SAF import, restart/reboot persistence, materialized-repository Git behavior, recovery semantics, or physical-device viability.
+
+The hybrid model must not be promoted to a final Android storage decision until those runtime/device gates close.
 
 ## Ready-for-review gate
 
-PR promotion from draft is blocked until at minimum:
+PR promotion from draft remains blocked.
 
-1. renderer/native/current Android build gates are green on one HEAD;
-2. emulator evidence demonstrates app boot plus real workspace open/import/list/read and restart restoration;
+Closed:
+1. renderer/native/current Android build gates are green on one HEAD.
+
+Still required:
+2. emulator evidence demonstrates real workspace open/import/list/read and restart restoration;
 3. Git viability is demonstrated on a materialized repository or a reproducible engine blocker is recorded;
 4. reboot/recovery semantics have evidence;
 5. at least one physical device has validated the primary workflow.
