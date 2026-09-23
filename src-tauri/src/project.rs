@@ -398,6 +398,46 @@ mod tests {
     }
 
     #[test]
+    fn workspace_metadata_serialization_matches_renderer_contract() {
+        let root = tempdir().expect("workspace");
+        let metadata = workspace_metadata_with_source(
+            root.path(),
+            Some("Human Project".into()),
+            "android-materialized",
+            Some("content://example/tree/project".into()),
+            "available",
+            Some(true),
+        )
+        .expect("metadata");
+
+        let value = serde_json::to_value(&metadata).expect("serialize metadata");
+
+        assert_eq!(value["kind"].as_str(), Some("android-materialized"));
+        assert_eq!(
+            value["sourceUri"].as_str(),
+            Some("content://example/tree/project")
+        );
+        assert_eq!(value["accessState"].as_str(), Some("available"));
+        assert_eq!(value["canWrite"].as_bool(), Some(true));
+        assert!(value.get("source_uri").is_none());
+        assert!(value.get("access_state").is_none());
+        assert!(value.get("can_write").is_none());
+    }
+
+    #[test]
+    fn filesystem_metadata_serialization_omits_android_only_fields() {
+        let root = tempdir().expect("workspace");
+        let metadata = workspace_metadata(root.path()).expect("metadata");
+
+        let value = serde_json::to_value(&metadata).expect("serialize metadata");
+
+        assert_eq!(value["kind"].as_str(), Some("filesystem"));
+        assert_eq!(value["accessState"].as_str(), Some("available"));
+        assert!(value.get("sourceUri").is_none());
+        assert!(value.get("canWrite").is_none());
+    }
+
+    #[test]
     fn source_display_name_does_not_leak_materialized_directory_identity() {
         let root = tempdir().expect("workspace");
         let metadata = workspace_metadata_with_source(
