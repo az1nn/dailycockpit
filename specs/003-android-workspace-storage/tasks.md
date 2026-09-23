@@ -12,7 +12,7 @@
 
 - [x] T010 Extend workspace metadata with explicit representation/source/access state.
 - [x] T011 Preserve existing desktop path behavior without interpreting Android source URIs as paths.
-- [ ] T012 Add contract tests/type coverage for the new metadata shape.
+- [x] T012 Add contract tests/type coverage for the new metadata shape. *(Rust serialization tests pin renderer-facing camelCase fields and Android-only optional fields.)*
 
 ## Phase 3 — Android SAF source adapter
 
