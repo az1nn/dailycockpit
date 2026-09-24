@@ -1,11 +1,27 @@
-import type { ProjectContext, RepositoryRef } from '../domain/project';
+import type {
+  ProjectContext,
+  RepositoryRef,
+  WorkspaceAccessState,
+  WorkspaceKind,
+} from '../domain/project';
 
 export type MutationKind = 'workspace.patch' | 'git.commit' | 'git.push' | 'github.merge';
+export type WorkspaceRuntime = 'desktop' | 'android';
 
 export interface WorkspaceMetadata {
   root: string;
   name: string;
   isGitRepository: boolean;
+  kind: WorkspaceKind;
+  sourceUri?: string;
+  accessState: WorkspaceAccessState;
+  canWrite?: boolean;
+}
+
+export interface AndroidWorkspaceRestore {
+  metadata: WorkspaceMetadata | null;
+  accessState: WorkspaceAccessState;
+  sourceUri?: string;
 }
 
 export interface FileEntry {
@@ -30,7 +46,10 @@ export interface PullRequestSummary {
 }
 
 export interface WorkspaceService {
+  runtime(): Promise<WorkspaceRuntime>;
   open(path: string): Promise<WorkspaceMetadata>;
+  openAndroid(): Promise<WorkspaceMetadata>;
+  restoreAndroid(): Promise<AndroidWorkspaceRestore>;
   listFiles(root: string, relative?: string): Promise<FileEntry[]>;
   readText(root: string, path: string): Promise<string>;
   applyPatch(root: string, patch: string, approvalToken: string): Promise<void>;

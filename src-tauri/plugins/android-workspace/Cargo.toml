@@ -1,0 +1,21 @@
+[package]
+name = "tauri-plugin-android-workspace"
+version = "0.1.0"
+description = "Daily Cockpit Android SAF workspace bridge"
+edition = "2021"
+links = "tauri-plugin-android-workspace"
+
+[package.metadata.platforms.support]
+windows = { level = "none" }
+linux = { level = "none" }
+macos = { level = "none" }
+android = { level = "full" }
+ios = { level = "none" }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11.3", default-features = false }
