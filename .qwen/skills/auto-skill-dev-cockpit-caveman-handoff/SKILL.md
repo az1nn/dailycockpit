@@ -3,7 +3,7 @@ name: auto-skill-dev-cockpit-caveman-handoff
 description: >-
   Create a short, SHA-bound handoff after material Dev Cockpit work so a fresh
   session can continue safely from repository truth, not chat memory.
-version: 1.1.0
+version: 1.2.0
 project: dev-cockpit
 ---
 
@@ -45,6 +45,21 @@ Capture:
 If HEAD changed after a PASS, treat that PASS as stale unless clearly unaffected.
 Pending/queued CI is never PASS.
 Never infer human approval.
+
+## Merge authority
+
+The operator is authorized to resolve merge conflicts and complete merges without asking for an additional confirmation.
+
+Before any merge:
+
+- reconcile the current base, PR head, mergeability, review state, required checks, and repository-defined validation gates;
+- resolve conflicts in favor of canonical repository truth and the active spec/ADR constraints, not stale chat context;
+- after conflict resolution or any other content change, treat prior CI as stale and require the mandatory gates to pass again on the resulting HEAD;
+- do not bypass explicit mandatory human, device, security, release, or acceptance gates merely because GitHub technically permits the merge;
+- once the current HEAD satisfies all mandatory gates and no blocker remains, merge without asking for another confirmation;
+- use a HEAD-bound merge where supported so the merge is rejected if the branch moves after verification.
+
+A merge conflict is a repairable condition, not a reason to stop development. A failed mandatory gate remains a blocker until corrected or explicitly reclassified by canonical repository policy.
 
 ## Dev Cockpit invariants
 
