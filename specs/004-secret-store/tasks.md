@@ -10,9 +10,9 @@
 
 ## Phase 2 — SecretStore boundary
 
-- [ ] T010 Define backend-neutral `SecretStore` contract.
-- [ ] T011 Define redacted error/state model: locked, unlocked, unavailable, missing, corrupt.
-- [ ] T012 Add contract/unit tests.
+- [x] T010 Define backend-neutral `SecretStore` contract.
+- [x] T011 Define redacted error/state model: locked, unlocked, unavailable, missing, corrupt.
+- [x] T012 Add contract/unit tests. *(Native tests added; CI verification pending on current HEAD.)*
 - [ ] T013 Prove no secret persistence in Workspace/SQLite/browser storage/log fixtures/model-visible context.
 
 ## Phase 3 — Stronghold candidate
