@@ -13,7 +13,7 @@
 - [ ] T010 Define backend-neutral `SecretStore` contract.
 - [ ] T011 Define redacted error/state model: locked, unlocked, unavailable, missing, corrupt.
 - [ ] T012 Add contract/unit tests.
-- [ ] T013 Prove no secret persistence in Workspace/SQLite/browser storage/log fixtures.
+- [ ] T013 Prove no secret persistence in Workspace/SQLite/browser storage/log fixtures/model-visible context.
 
 ## Phase 3 — Stronghold candidate
 
@@ -33,7 +33,7 @@
 ## Phase 5 — Runtime validation
 
 - [ ] T040 Prove desktop create/save/restart/unlock/read.
-- [ ] T041 Scan desktop logs/persisted non-secret state for canary leakage.
+- [ ] T041 Scan desktop logs/persisted non-secret state/model-visible context for canary leakage.
 - [ ] T042 Build and run Stronghold path on Android emulator.
 - [ ] T043 Prove Android process-kill/restart/unlock/read.
 - [ ] T044 Exercise wrong unlock and unavailable/corrupt recovery on Android.
