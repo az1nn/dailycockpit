@@ -6,7 +6,7 @@
 
 ## Why
 
-Daily Cockpit needs to accept provider credentials without turning Workspace files, derived indexes, renderer storage, logs, or source code into a secret database. The product requires one stable `SecretStore` capability whose lifecycle is understandable on desktop and Android before AI-provider work depends on it.
+Daily Cockpit needs to accept provider credentials without turning Workspace files, derived indexes, renderer storage, logs, source code or model-visible context into a secret database. The product requires one stable `SecretStore` capability whose lifecycle is understandable on desktop and Android before AI-provider work depends on it.
 
 ## User scenarios
 
@@ -61,6 +61,7 @@ As a user, if the vault, unlock material, permission, biometric state or install
 - FR-010: Biometric behavior SHALL be evaluated separately from encrypted persistence and classified as required, optional or deferred with evidence.
 - FR-011: Uninstall/reinstall behavior and credential recovery/re-entry SHALL be explicit.
 - FR-012: Consumers SHALL depend on `SecretStore`, not directly on Stronghold or another backend-specific API.
+- FR-013: Provider credentials SHALL NOT enter model-visible prompt/context data by default; transport authentication and model context are separate channels.
 
 ## Non-goals
 
@@ -79,3 +80,4 @@ As a user, if the vault, unlock material, permission, biometric state or install
 - SC-004: Android emulator runtime proves create/read/restart/unlock for the selected backend.
 - SC-005: At least one physical-device run records the same core lifecycle.
 - SC-006: The selected master-key model has explicit bootstrap, restart, loss and recovery semantics.
+- SC-007: Validation shows the canary secret does not appear in model-visible context or normal telemetry/log output.
