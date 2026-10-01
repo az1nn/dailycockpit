@@ -6,7 +6,7 @@
 - [x] T002 Create `feat/secret-store-s002` from canonical `master` HEAD `492d20f33d11626d68fd0af512be444c301f56dc`.
 - [x] T003 Create S002 spike record and Spec Kit 004.
 - [x] T004 Re-check current Tauri Stronghold release/support evidence.
-- [ ] T005 Run Spec Kit analysis and close documentation inconsistencies before implementation.
+- [x] T005 Run Spec Kit analysis and close documentation inconsistencies before implementation. *(PASS in `analysis.md`; model-visible secret leakage requirement added.)*
 
 ## Phase 2 — SecretStore boundary
 
